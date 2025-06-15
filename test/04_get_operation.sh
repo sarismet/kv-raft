@@ -6,10 +6,13 @@ echo ""
 ROUTER_URL="http://router:3000"
 
 echo "Retrieving user1 (should exist from previous PUT)..."
-echo "URL: $ROUTER_URL/get?key=user1"
+echo "URL: $ROUTER_URL/get"
+echo "Body: {\"key\": \"user1\"}"
 echo ""
 
-response=$(curl -s "$ROUTER_URL/get?key=user1")
+response=$(curl -s -X GET "$ROUTER_URL/get" \
+    -H "Content-Type: application/json" \
+    -d '{"key": "user1"}')
 echo "Raw response: $response"
 echo ""
 

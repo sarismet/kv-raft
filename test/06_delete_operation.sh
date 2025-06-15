@@ -6,10 +6,13 @@ echo ""
 ROUTER_URL="http://router:3000"
 
 echo "Deleting user1 (should exist from previous PUT)..."
-echo "URL: $ROUTER_URL/delete?key=user1"
+echo "URL: $ROUTER_URL/delete"
+echo "Body: {\"key\": \"user1\"}"
 echo ""
 
-response=$(curl -s -X DELETE "$ROUTER_URL/delete?key=user1")
+response=$(curl -s -X DELETE "$ROUTER_URL/delete" \
+    -H "Content-Type: application/json" \
+    -d '{"key": "user1"}')
 echo "Raw response: $response"
 echo ""
 

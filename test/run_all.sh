@@ -11,8 +11,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # List of test scripts in order
 TESTS=(
     "01_router_status.sh"
-    "02_put_query_params.sh"
-    "03_put_json_body.sh"
+    "03_put_operation.sh"
     "04_get_operation.sh"
     "05_get_nonexistent.sh"
     "06_delete_operation.sh"
@@ -49,12 +48,12 @@ echo "🔍 Pre-flight checks..."
 echo ""
 
 # Check router
-if curl -s "http://localhost:3000/status" >/dev/null 2>&1; then
+if curl -s "http://router:3000/status" >/dev/null 2>&1; then
     echo "✅ Router is running on port 3000"
 else
     echo "❌ Router is not running on port 3000"
     echo "   Please start the router first:"
-    echo "   ./scripts/run_python_router.sh"
+    echo "   docker-compose up router"
     echo ""
 fi
 
@@ -62,7 +61,8 @@ fi
 shard_count=0
 for shard in 1 2 3; do
     port="80${shard}1"
-    if curl -s "http://localhost:$port/config" >/dev/null 2>&1; then
+    service_name="shard${shard}"
+    if curl -s "http://${service_name}:${port}/config" >/dev/null 2>&1; then
         echo "✅ Shard $shard is running on port $port"
         ((shard_count++))
     else
@@ -70,13 +70,43 @@ for shard in 1 2 3; do
     fi
 done
 
-if [[ $shard_count -eq 3 ]]; then
-    echo "✅ All shards are running"
-else
-    echo "❌ Only $shard_count/3 shards are running"
-    echo "   Please start the shards first:"
-    echo "   ./scripts/run_shards.sh"
-fi
+# Retry logic for shard availability
+max_retries=5
+retry_count=0
+
+while [[ $retry_count -lt $max_retries ]]; do
+    if [[ $shard_count -eq 3 ]]; then
+        echo "✅ All shards are running"
+        break
+    else
+        retry_count=$((retry_count + 1))
+        echo "❌ Only $shard_count/3 shards are running (attempt $retry_count/$max_retries)"
+        
+        if [[ $retry_count -lt $max_retries ]]; then
+            echo "   Waiting 5 seconds before retrying..."
+            sleep 5
+            
+            # Re-check shards with Docker service names
+            shard_count=0
+            for shard in 1 2 3; do
+                port="80${shard}1"
+                service_name="shard${shard}"
+                if curl -s "http://${service_name}:${port}/config" >/dev/null 2>&1; then
+                    echo "✅ Shard $shard is running on port $port"
+                    ((shard_count++))
+                else
+                    echo "❌ Shard $shard is not running on port $port"
+                fi
+            done
+        else
+            echo "   Maximum retries reached. Please start the shards first:"
+            echo "   docker-compose up shard1 shard2 shard3"
+            echo ""
+            echo "Exiting due to insufficient shards..."
+            exit 1
+        fi
+    fi
+done
 
 echo ""
 echo "========================================"

@@ -7,12 +7,12 @@ ROUTER_URL="http://router:3000"
 
 echo "Sending PUT request with JSON body..."
 echo "URL: $ROUTER_URL/put"
-echo "Body: {\"key\": \"user2\", \"val\": \"jane_smith\"}"
+echo "Body: {\"key\": \"user1\", \"val\": \"john_doe\"}"
 echo ""
 
 response=$(curl -s -X POST "$ROUTER_URL/put" \
     -H "Content-Type: application/json" \
-    -d '{"key": "user2", "val": "jane_smith"}')
+    -d '{"key": "user1", "val": "john_doe"}')
 
 echo "Raw response: $response"
 echo ""

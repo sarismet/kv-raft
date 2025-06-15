@@ -86,8 +86,9 @@ def get_shard_index_from_string_key(key: str, shard_count: int) -> int:
 class RouterConfig:
     """Router configuration management."""
 
-    def __init__(self, shard_ports: List[str]):
+    def __init__(self, shard_ports: List[str], http_session: ClientSession):
         self.shard_ports = shard_ports
+        self.http_session = http_session
         self._config_cache: Optional[Dict[str, Any]] = None
         self._cache_timestamp = 0
         self._cache_ttl = 30  # Cache TTL in seconds
@@ -112,7 +113,7 @@ class RouterConfig:
             url = f"http://{host_port}/config"
             logging.info(f"Attempting to fetch config from {url}")
 
-            async with http_session.get(url, timeout=ClientTimeout(total=5)) as resp:
+            async with self.http_session.get(url, timeout=ClientTimeout(total=5)) as resp:
                 if resp.status == 200:
                     data = await resp.json()
                     logging.info(f"Using shard at {host_port} for config")
@@ -196,6 +197,29 @@ class RouterConfig:
 
         return leader_address
 
+    async def get_raft_leader_address(self) -> str:
+        """Get the address of the current Raft leader for write operations."""
+        # Try each shard to find the current leader
+        shard_count = await self.get_shard_count()
+        
+        for shard_id in range(1, shard_count + 1):
+            try:
+                shard_address = await self.get_shard_address(shard_id)
+                url = f"http://{shard_address}/raft/status"
+                
+                async with self.http_session.get(url, timeout=ClientTimeout(total=5)) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        if data.get("success") and data.get("data", {}).get("state") == "Leader":
+                            return shard_address
+            except Exception as e:
+                logging.debug(f"Failed to check leader status for shard {shard_id}: {e}")
+                continue
+        
+        # Fallback: use the first shard if no leader found
+        logging.warning("Could not find Raft leader, using first shard as fallback")
+        return await self.get_shard_address(1)
+
 
 # Global router config
 router_config: Optional[RouterConfig] = None
@@ -219,23 +243,25 @@ async def status_handler(request: Request) -> Response:
 async def get_handler(request: Request) -> Response:
     """Handle GET requests."""
     try:
-        # Get key from query parameters or form data
+        # Get key from query parameters or JSON body
         key = request.query.get("key")
-        if not key and request.content_type == "application/x-www-form-urlencoded":
-            form_data = await request.post()
-            key = form_data.get("key")
+        if not key and request.content_type == "application/json":
+            try:
+                json_data = await request.json()
+                key = json_data.get("key")
+            except Exception as e:
+                return json_error_response(400, f"Invalid JSON body: {str(e)}")
 
         if not key:
-            return json_error_response(400, "Key parameter is required")
+            return json_error_response(400, "Key parameter is required (use query params or JSON body)")
 
         # Decode URL-encoded key
         key = unquote(key)
 
-        shard_count = await router_config.get_shard_count()
-        shard_index = get_shard_index_from_string_key(key, shard_count)
-        shard_address = await router_config.get_shard_address(shard_index + 1)
+        # Route read operations to the current Raft leader for strong consistency
+        shard_address = await router_config.get_raft_leader_address()
 
-        # Forward request to appropriate shard
+        # Forward request to the Raft leader
         server_url = f"http://{shard_address}/get?key={quote(key)}"
 
         async with http_session.get(server_url, timeout=ClientTimeout(total=10)) as resp:
@@ -255,28 +281,30 @@ async def get_handler(request: Request) -> Response:
 async def put_handler(request: Request) -> Response:
     """Handle PUT requests."""
     try:
-        # Get key and value from query parameters or form data
+        # Get key and value from query parameters or JSON body
         key = request.query.get("key")
         value = request.query.get("val")
 
         if not key or not value:
-            if request.content_type == "application/x-www-form-urlencoded":
-                form_data = await request.post()
-                key = key or form_data.get("key")
-                value = value or form_data.get("val")
+            if request.content_type == "application/json":
+                try:
+                    json_data = await request.json()
+                    key = key or json_data.get("key")
+                    value = value or json_data.get("val")
+                except Exception as e:
+                    return json_error_response(400, f"Invalid JSON body: {str(e)}")
 
         if not key or not value:
-            return json_error_response(400, "Key and value parameters are required")
+            return json_error_response(400, "Key and value parameters are required (use query params or JSON body)")
 
         # Decode URL-encoded parameters
         key = unquote(key)
         value = unquote(value)
 
-        shard_count = await router_config.get_shard_count()
-        shard_index = get_shard_index_from_string_key(key, shard_count)
-        shard_address = await router_config.get_shard_address(shard_index + 1)
+        # Route write operations to the current Raft leader
+        shard_address = await router_config.get_raft_leader_address()
 
-        # Forward request to appropriate shard
+        # Forward request to the Raft leader
         server_url = f"http://{shard_address}/put?key={quote(key)}&val={quote(value)}"
 
         async with http_session.post(server_url, timeout=ClientTimeout(total=10)) as resp:
@@ -296,23 +324,25 @@ async def put_handler(request: Request) -> Response:
 async def delete_handler(request: Request) -> Response:
     """Handle DELETE requests."""
     try:
-        # Get key from query parameters or form data
+        # Get key from query parameters or JSON body
         key = request.query.get("key")
-        if not key and request.content_type == "application/x-www-form-urlencoded":
-            form_data = await request.post()
-            key = form_data.get("key")
+        if not key and request.content_type == "application/json":
+            try:
+                json_data = await request.json()
+                key = json_data.get("key")
+            except Exception as e:
+                return json_error_response(400, f"Invalid JSON body: {str(e)}")
 
         if not key:
-            return json_error_response(400, "Key parameter is required")
+            return json_error_response(400, "Key parameter is required (use query params or JSON body)")
 
         # Decode URL-encoded key
         key = unquote(key)
 
-        shard_count = await router_config.get_shard_count()
-        shard_index = get_shard_index_from_string_key(key, shard_count)
-        shard_address = await router_config.get_shard_address(shard_index + 1)
+        # Route write operations to the current Raft leader
+        shard_address = await router_config.get_raft_leader_address()
 
-        # Forward request to appropriate shard
+        # Forward request to the Raft leader
         server_url = f"http://{shard_address}/delete?key={quote(key)}"
 
         async with http_session.delete(server_url, timeout=ClientTimeout(total=10)) as resp:
@@ -411,7 +441,7 @@ async def main():
 
     # Initialize global components
     http_session = await create_http_session()
-    router_config = RouterConfig(shard_ports)
+    router_config = RouterConfig(shard_ports, http_session)
 
     logging.info("Starting router node for unified architecture")
     logging.info(f"Will query shards at ports: {shard_ports} for configuration")

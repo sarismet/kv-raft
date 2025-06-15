@@ -6,10 +6,13 @@ echo ""
 ROUTER_URL="http://router:3000"
 
 echo "Attempting to retrieve non-existent key..."
-echo "URL: $ROUTER_URL/get?key=nonexistent_key"
+echo "URL: $ROUTER_URL/get"
+echo "Body: {\"key\": \"nonexistent_key\"}"
 echo ""
 
-response=$(curl -s "$ROUTER_URL/get?key=nonexistent_key")
+response=$(curl -s -X GET "$ROUTER_URL/get" \
+    -H "Content-Type: application/json" \
+    -d '{"key": "nonexistent_key"}')
 echo "Raw response: $response"
 echo ""
 

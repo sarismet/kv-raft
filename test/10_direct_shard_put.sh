@@ -7,7 +7,7 @@ echo "Sending PUT request directly to shard 1 (bypassing router)..."
 echo "URL: http://shard1:8011/put?key=direct_test&val=shard_direct_value"
 echo ""
 
-response=$(curl -s "http://shard1:8011/put?key=direct_test&val=shard_direct_value")
+response=$(curl -s -X POST "http://shard1:8011/put?key=direct_test&val=shard_direct_value")
 echo "Raw response: $response"
 echo ""
 

@@ -129,14 +129,31 @@ func (s *Server) GetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fsmInstance, ok := s.fsm.(*fsm.FSM)
-	if !ok {
-		writeJSONError(w, http.StatusInternalServerError, "Failed to access FSM")
+	// Use Raft consensus for GET operations to ensure consistency
+	payload := fsm.Payload{
+		OP:  fsm.GET,
+		Key: key,
+	}
+
+	data, err := json.Marshal(payload)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "Failed to marshal payload")
 		return
 	}
 
-	value, err := fsmInstance.Get(key)
-	if err != nil {
+	applyFuture := s.raft.Apply(data, 500*time.Millisecond)
+	if err := applyFuture.Error(); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "Raft apply failed: "+err.Error())
+		return
+	}
+
+	applyResponse, ok := applyFuture.Response().(*fsm.ApplyResponse)
+	if !ok {
+		writeJSONError(w, http.StatusInternalServerError, "Invalid raft response")
+		return
+	}
+
+	if applyResponse.Error != nil {
 		response := GetResponse{
 			Success: false,
 			Key:     key,
@@ -145,6 +162,8 @@ func (s *Server) GetHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONResponse(w, http.StatusNotFound, response)
 		return
 	}
+
+	value := applyResponse.Data
 
 	log.Printf("[HTTP-GET] key %s was found on this node", key)
 
