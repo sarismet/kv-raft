@@ -3,7 +3,7 @@
 echo "=== PUT Operation (Query Parameters) ==="
 echo ""
 
-ROUTER_URL="http://localhost:3000"
+ROUTER_URL="http://router:3000"
 
 echo "Sending PUT request with query parameters..."
 echo "URL: $ROUTER_URL/put?key=user1&val=john_doe"

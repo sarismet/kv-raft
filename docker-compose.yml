@@ -11,18 +11,7 @@ services:
     container_name: shard1
     networks:
       - kv-raft-network
-    environment:
-      - SHARD_ID=1
-      - NODE_ID=1
-      - PORT=8011
-      - RAFT_ADDR=shard1:18011
-    command: [
-      "./shard-server",
-      "--shard_id", "1",
-      "--node_id", "1",
-      "--port", "8011",
-      "--raft_addr", "shard1:18011"
-    ]
+    command: ./shard-server --shard_id=1 --node_id=1 --port=8011 --raft_addr=shard1:18011
     ports:
       - "8011:8011"
       - "18011:18011"
@@ -39,18 +28,7 @@ services:
     container_name: shard2
     networks:
       - kv-raft-network
-    environment:
-      - SHARD_ID=2
-      - NODE_ID=2
-      - PORT=8021
-      - RAFT_ADDR=shard2:18021
-    command: [
-      "./shard-server",
-      "--shard_id", "2",
-      "--node_id", "2",
-      "--port", "8021",
-      "--raft_addr", "shard2:18021"
-    ]
+    command: ./shard-server --shard_id=2 --node_id=2 --port=8021 --raft_addr=shard2:18021
     ports:
       - "8021:8021"
       - "18021:18021"
@@ -67,18 +45,7 @@ services:
     container_name: shard3
     networks:
       - kv-raft-network
-    environment:
-      - SHARD_ID=3
-      - NODE_ID=3
-      - PORT=8031
-      - RAFT_ADDR=shard3:18031
-    command: [
-      "./shard-server",
-      "--shard_id", "3",
-      "--node_id", "3",
-      "--port", "8031",
-      "--raft_addr", "shard3:18031"
-    ]
+    command: ./shard-server --shard_id=3 --node_id=3 --port=8031 --raft_addr=shard3:18031
     ports:
       - "8031:8031"
       - "18031:18031"
@@ -91,7 +58,8 @@ services:
 
   # Cluster initialization service
   cluster-init:
-    image: alpine:latest
+    build:
+      context: ./cluster
     container_name: cluster-init
     networks:
       - kv-raft-network
@@ -102,12 +70,8 @@ services:
         condition: service_healthy
       shard3:
         condition: service_healthy
-    volumes:
-      - ./scripts/docker-init-cluster.sh:/init-cluster.sh
-    command: ["/bin/sh", "-c", "apk add --no-cache curl && chmod +x /init-cluster.sh && /init-cluster.sh"]
     restart: "no"
-    environment:
-      - TERM=xterm-256color
+
 
   router:
     build:
@@ -121,12 +85,7 @@ services:
     environment:
       - PORT=3000
       - SHARD_PORTS=8011,8021,8031
-    command: [
-      "python", "router.py",
-      "--port", "3000",
-      "--shard-ports", "shard1:8011,shard2:8021,shard3:8031",
-      "--log-level", "INFO"
-    ]
+    command: python router.py --port 3000 --shard-ports shard1:8011,shard2:8021,shard3:8031 --log-level INFO
     ports:
       - "3000:3000"
     healthcheck:
@@ -135,3 +94,17 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s 
+
+  # Test runner service - runs tests every 30 seconds
+  test-runner:
+    build:
+      context: ./test
+    container_name: test-runner
+    networks:
+      - kv-raft-network
+    depends_on:
+      router:
+        condition: service_healthy
+    environment:
+      - TEST_INTERVAL=30
+    restart: unless-stopped 

@@ -29,6 +29,3 @@ RUN chmod +x shard-server
 
 # Expose ports
 EXPOSE 8011 8021 8031 18011 18021 18031
-
-# Run the shard server
-ENTRYPOINT ["./shard-server"]

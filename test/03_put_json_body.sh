@@ -3,16 +3,17 @@
 echo "=== PUT Operation (JSON Body) ==="
 echo ""
 
-ROUTER_URL="http://localhost:3000"
+ROUTER_URL="http://router:3000"
 
 echo "Sending PUT request with JSON body..."
-echo "Content-Type: application/json"
-echo "Body: {\"key\":\"user2\",\"val\":\"jane_smith\"}"
+echo "URL: $ROUTER_URL/put"
+echo "Body: {\"key\": \"user2\", \"val\": \"jane_smith\"}"
 echo ""
 
-response=$(curl -s -H "Content-Type: application/json" \
-     -d '{"key":"user2","val":"jane_smith"}' \
-     "$ROUTER_URL/put")
+response=$(curl -s -X POST "$ROUTER_URL/put" \
+    -H "Content-Type: application/json" \
+    -d '{"key": "user2", "val": "jane_smith"}')
+
 echo "Raw response: $response"
 echo ""
 

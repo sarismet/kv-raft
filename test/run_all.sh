@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "🚀 Running All KV-Raft API Examples"
+echo "🚀 Running All KV-Raft API Tests"
 echo "=================================="
 echo "Architecture: 3 shards forming 1 Raft cluster"
 echo ""
@@ -8,8 +8,8 @@ echo ""
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# List of example scripts in order
-EXAMPLES=(
+# List of test scripts in order
+TESTS=(
     "01_router_status.sh"
     "02_put_query_params.sh"
     "03_put_json_body.sh"
@@ -21,11 +21,10 @@ EXAMPLES=(
     "09_raft_status.sh"
     "10_direct_shard_put.sh"
     "11_direct_shard_get.sh"
-    "12_error_examples.sh"
 )
 
-# Function to run an example with error handling
-run_example() {
+# Function to run a test with error handling
+run_test() {
     local script="$1"
     local script_path="$SCRIPT_DIR/$script"
     
@@ -84,7 +83,7 @@ echo "========================================"
 echo ""
 
 # Ask user if they want to continue
-read -p "Do you want to continue with the examples? (y/N): " -n 1 -r
+read -p "Do you want to continue with the tests? (y/N): " -n 1 -r
 echo ""
 if [[ ! $REPLY =~ ^[Yy]$ ]]; then
     echo "Exiting..."
@@ -93,24 +92,24 @@ fi
 
 echo ""
 
-# Run all examples
-for example in "${EXAMPLES[@]}"; do
-    run_example "$example"
+# Run all tests
+for test in "${TESTS[@]}"; do
+    run_test "$test"
     
-    # Optional: pause between examples
+    # Optional: pause between tests
     if [[ "$1" == "--pause" ]]; then
-        read -p "Press Enter to continue to next example..." -r
+        read -p "Press Enter to continue to next test..." -r
         echo ""
     fi
 done
 
-echo "🎉 All examples completed!"
+echo "🎉 All tests completed!"
 echo ""
 echo "📊 Summary:"
-echo "  - Total examples run: ${#EXAMPLES[@]}"
+echo "  - Total tests run: ${#TESTS[@]}"
 echo "  - Check individual outputs above for results"
 echo ""
 echo "💡 Tips:"
 echo "  - Run individual scripts for focused testing"
-echo "  - Use --pause flag to pause between examples"
+echo "  - Use --pause flag to pause between tests"
 echo "  - Check logs/ directory for detailed server logs" 

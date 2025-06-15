@@ -19,6 +19,3 @@ COPY . .
 
 # Expose port
 EXPOSE 3000
-
-# Run the router
-ENTRYPOINT ["python", "router.py"]

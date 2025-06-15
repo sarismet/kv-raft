@@ -3,13 +3,13 @@
 echo "=== DELETE Operation ==="
 echo ""
 
-ROUTER_URL="http://localhost:3000"
+ROUTER_URL="http://router:3000"
 
-echo "Sending DELETE request for key 'user2'..."
-echo "URL: $ROUTER_URL/delete?key=user2"
+echo "Deleting user1 (should exist from previous PUT)..."
+echo "URL: $ROUTER_URL/delete?key=user1"
 echo ""
 
-response=$(curl -s -X DELETE "$ROUTER_URL/delete?key=user2")
+response=$(curl -s -X DELETE "$ROUTER_URL/delete?key=user1")
 echo "Raw response: $response"
 echo ""
 
@@ -20,10 +20,10 @@ echo ""
 # Check if DELETE was successful
 if echo "$response" | jq -e '.success == true' >/dev/null 2>&1; then
     echo "✅ DELETE operation successful"
+    echo "Message: $(echo "$response" | jq -r '.message // "Key deleted"')"
 else
     echo "❌ DELETE operation failed"
-    error=$(echo "$response" | jq -r '.error // "Unknown error"')
-    echo "Error: $error"
+    echo "Error: $(echo "$response" | jq -r '.error // "Unknown error"')"
     
     # Check if it's a connection error
     if [[ "$error" == *"Cannot connect"* ]]; then

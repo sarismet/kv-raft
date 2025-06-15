@@ -11,7 +11,7 @@ for shard in 1 2 3; do
     port="80${shard}1"
     echo "--- Shard $shard (port $port) ---"
     
-    response=$(curl -s "http://localhost:$port/config")
+    response=$(curl -s "http://shard${shard}:$port/config")
     echo "Raw response: $response"
     echo ""
     

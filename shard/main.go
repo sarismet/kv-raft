@@ -70,20 +70,40 @@ func (us *UnifiedServer) DeleteHandler(w http.ResponseWriter, r *http.Request) {
 // Config server handlers (merged from manager/main.go)
 func (us *UnifiedServer) ConfigHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("[HTTP] config is requested")
+	log.Printf("[DEBUG] ConfigHandler called for shard %d", us.shardID)
 
-	// Build shards map with proper structure
+	// Build shards map by querying the actual Raft cluster configuration
 	allShards := make(map[int]string)
 	
-	// Add current shard info (convert raft address to HTTP address)
-	currentLeaderAddr := string(us.raft.Leader())
-	if currentLeaderAddr != "" {
-		httpAddr := convertRaftToHTTPAddress(currentLeaderAddr)
-		allShards[us.shardID] = httpAddr
-	}
-	
-	// Add known shards info
-	for shardID, address := range us.knownShards {
-		allShards[shardID] = address
+	// Get the current Raft configuration
+	future := us.raft.GetConfiguration()
+	if err := future.Error(); err != nil {
+		log.Printf("Failed to get Raft configuration: %v", err)
+		// Fallback to known shards
+		for shardID, address := range us.knownShards {
+			allShards[shardID] = address
+		}
+		// Add current shard
+		allShards[us.shardID] = fmt.Sprintf("shard%d:%d", us.shardID, 8000+us.shardID*10+1)
+		log.Printf("Using fallback configuration: %d shards", len(allShards))
+	} else {
+		log.Printf("Successfully got Raft configuration with %d servers", len(future.Configuration().Servers))
+		// Process all servers in the Raft cluster
+		for _, server := range future.Configuration().Servers {
+			log.Printf("Processing server: ID=%s, Address=%s", server.ID, server.Address)
+			// Extract shard ID from server ID (assuming server ID matches shard ID)
+			if shardID, err := strconv.Atoi(string(server.ID)); err == nil {
+				// Convert Raft address to HTTP address
+				httpAddr := convertRaftToHTTPAddress(string(server.Address))
+				// Normalize to use Docker service names
+				normalizedAddr := normalizeShardAddress(shardID, httpAddr)
+				allShards[shardID] = normalizedAddr
+				log.Printf("Added shard %d with address %s", shardID, normalizedAddr)
+			} else {
+				log.Printf("Failed to parse server ID %s as integer: %v", server.ID, err)
+			}
+		}
+		log.Printf("Final configuration: %d shards", len(allShards))
 	}
 
 	response := APIResponse{
@@ -129,11 +149,14 @@ func (us *UnifiedServer) AddShardHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// Normalize address to use Docker service name for consistency
+	normalizedAddress := normalizeShardAddress(shardIDInt, req.ShardAddress)
+	
 	// Update local knowledge
-	us.knownShards[shardIDInt] = req.ShardAddress
+	us.knownShards[shardIDInt] = normalizedAddress
 	
 	// Broadcast to other known shards
-	us.broadcastShardInfo(shardIDInt, req.ShardAddress)
+	us.broadcastShardInfo(shardIDInt, normalizedAddress)
 
 	log.Printf("Added shard %d with address %s", shardIDInt, req.ShardAddress)
 	
@@ -183,8 +206,11 @@ func (us *UnifiedServer) NewLeaderHandler(w http.ResponseWriter, r *http.Request
 	// Process the new leader info
 	log.Printf("New leader address: %s, shard ID: %d", req.ShardAddress, shardIDInt)
 
+	// Normalize address to use Docker service name for consistency
+	normalizedAddress := normalizeShardAddress(shardIDInt, req.ShardAddress)
+	
 	// Update local knowledge
-	us.knownShards[shardIDInt] = req.ShardAddress
+	us.knownShards[shardIDInt] = normalizedAddress
 	
 	// Broadcast to other known shards
 	us.broadcastShardInfo(shardIDInt, req.ShardAddress)
@@ -251,8 +277,8 @@ func (us *UnifiedServer) LeaderObserver() {
 				if us.raft.State() == raft.Leader {
 					log.Printf("Became leader for shard %d, broadcasting to peers", us.shardID)
 					
-					// Convert raft address to HTTP address (subtract 10000 from port)
-					httpAddress := convertRaftToHTTPAddress(string(currentAddress))
+					// Use Docker service name instead of IP address for consistency
+					httpAddress := fmt.Sprintf("shard%d:%d", us.shardID, 8000+us.shardID*10+1)
 					
 					// Broadcast to all known shards
 					us.broadcastShardInfo(us.shardID, httpAddress)
@@ -286,19 +312,67 @@ func (us *UnifiedServer) initializePeerShards(peerShardsStr string) {
 	}
 	
 	peers := strings.Split(peerShardsStr, ",")
-	for i, peer := range peers {
+	for _, peer := range peers {
 		peer = strings.TrimSpace(peer)
 		if peer != "" {
-			// Assign shard IDs based on order (this is a simple approach)
-			// In production, you might want a more sophisticated shard ID assignment
-			peerShardID := i + 1
-			if peerShardID == us.shardID {
-				peerShardID = i + 2 // Skip our own shard ID
+			// Extract shard ID from the address format (e.g., shard2:8021 -> shard ID 2)
+			peerShardID := extractShardIDFromAddress(peer)
+			if peerShardID > 0 && peerShardID != us.shardID {
+				us.knownShards[peerShardID] = peer
+				log.Printf("Added peer shard %d at %s", peerShardID, peer)
 			}
-			us.knownShards[peerShardID] = peer
-			log.Printf("Added peer shard %d at %s", peerShardID, peer)
 		}
 	}
+}
+
+// extractShardIDFromAddress extracts shard ID from address like "shard2:8021" or "localhost:8021"
+func extractShardIDFromAddress(address string) int {
+	parts := strings.Split(address, ":")
+	if len(parts) != 2 {
+		return 0
+	}
+	
+	host := parts[0]
+	port := parts[1]
+	
+	// Try to extract from hostname first (e.g., "shard2" -> 2)
+	if strings.HasPrefix(host, "shard") {
+		shardIDStr := strings.TrimPrefix(host, "shard")
+		if shardID, err := strconv.Atoi(shardIDStr); err == nil {
+			return shardID
+		}
+	}
+	
+	// Fallback: extract from port (e.g., "8021" -> 2, "8031" -> 3)
+	if portNum, err := strconv.Atoi(port); err == nil {
+		if portNum >= 8011 && portNum <= 8099 {
+			// Extract shard ID from port pattern: 80X1 -> X
+			return (portNum - 8001) / 10
+		}
+	}
+	
+	return 0
+}
+
+// normalizeShardAddress converts any address format to Docker service name format
+func normalizeShardAddress(shardID int, address string) string {
+	// If it's already in the correct format (shardX:port), return as-is
+	expectedServiceName := fmt.Sprintf("shard%d:", shardID)
+	if strings.HasPrefix(address, expectedServiceName) {
+		return address
+	}
+	
+	// Extract port from the address
+	parts := strings.Split(address, ":")
+	if len(parts) == 2 {
+		// Use the expected port for this shard
+		expectedPort := 8000 + shardID*10 + 1
+		return fmt.Sprintf("shard%d:%d", shardID, expectedPort)
+	}
+	
+	// Fallback: construct the expected address
+	expectedPort := 8000 + shardID*10 + 1
+	return fmt.Sprintf("shard%d:%d", shardID, expectedPort)
 }
 
 func main() {
@@ -357,14 +431,20 @@ func main() {
 		log.Fatal(err)
 	}
 
-	raftServer.BootstrapCluster(raft.Configuration{
-		Servers: []raft.Server{
-			{
-				ID:      raft.ServerID(*nodeID),
-				Address: transport.LocalAddr(),
+	// Only bootstrap cluster on shard 1, others will join via /raft/join
+	if *shardID == 1 {
+		log.Printf("Shard 1: Bootstrapping new Raft cluster")
+		raftServer.BootstrapCluster(raft.Configuration{
+			Servers: []raft.Server{
+				{
+					ID:      raft.ServerID(*nodeID),
+					Address: transport.LocalAddr(),
+				},
 			},
-		},
-	})
+		})
+	} else {
+		log.Printf("Shard %d: Waiting to join existing Raft cluster", *shardID)
+	}
 
 	// Create unified server
 	unifiedServer := NewUnifiedServer(raftServer, fsmStore, *shardID)

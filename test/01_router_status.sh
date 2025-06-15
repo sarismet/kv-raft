@@ -3,7 +3,7 @@
 echo "=== Router Status Check ==="
 echo ""
 
-ROUTER_URL="http://localhost:3000"
+ROUTER_URL="http://router:3000"
 
 echo "Checking router status..."
 response=$(curl -s "$ROUTER_URL/status")
