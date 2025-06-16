@@ -1,3 +1,7 @@
+// KV-Raft: Raft consensus implementation for distributed key-value store
+// Inspired by: https://github.com/aemirbosnak/distributed-key-value-store
+
+
 package main
 
 import (

@@ -11,15 +11,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # List of test scripts in order
 TESTS=(
     "01_router_status.sh"
-    "03_put_operation.sh"
-    "04_get_operation.sh"
-    "05_get_nonexistent.sh"
-    "06_delete_operation.sh"
-    "07_verify_deletion.sh"
-    "08_shard_config.sh"
-    "09_raft_status.sh"
-    "10_direct_shard_put.sh"
-    "11_direct_shard_get.sh"
+    "02_put_operation.sh"
+    "03_get_operation.sh"
+    "04_get_nonexistent.sh"
+    "05_delete_operation.sh"
+    "06_verify_deletion.sh"
+    "07_shard_config.sh"
+    "08_raft_status.sh"
+    "09_direct_shard_put.sh"
+    "10_direct_shard_get.sh"
 )
 
 # Function to run a test with error handling

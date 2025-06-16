@@ -6,10 +6,9 @@ Uses asyncio for green threads (similar to goroutines) and aiohttp for async HTT
 
 import asyncio
 import argparse
-import json
 import logging
 import sys
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Any
 from urllib.parse import quote, unquote
 
 import aiohttp
@@ -241,19 +240,13 @@ async def status_handler(request: Request) -> Response:
 
 
 async def get_handler(request: Request) -> Response:
-    """Handle GET requests."""
+    """Handle GET requests - query parameters only."""
     try:
-        # Get key from query parameters or JSON body
+        # Only accept query parameters for GET requests
         key = request.query.get("key")
-        if not key and request.content_type == "application/json":
-            try:
-                json_data = await request.json()
-                key = json_data.get("key")
-            except Exception as e:
-                return json_error_response(400, f"Invalid JSON body: {str(e)}")
 
         if not key:
-            return json_error_response(400, "Key parameter is required (use query params or JSON body)")
+            return json_error_response(400, "Key parameter is required in query string")
 
         # Decode URL-encoded key
         key = unquote(key)
@@ -279,23 +272,21 @@ async def get_handler(request: Request) -> Response:
 
 
 async def put_handler(request: Request) -> Response:
-    """Handle PUT requests."""
+    """Handle PUT requests - JSON body required."""
     try:
-        # Get key and value from query parameters or JSON body
-        key = request.query.get("key")
-        value = request.query.get("val")
+        # Only accept JSON body format
+        if request.content_type != "application/json":
+            return json_error_response(400, "Content-Type must be application/json")
+
+        try:
+            json_data = await request.json()
+            key = json_data.get("key")
+            value = json_data.get("val")
+        except Exception as e:
+            return json_error_response(400, f"Invalid JSON body: {str(e)}")
 
         if not key or not value:
-            if request.content_type == "application/json":
-                try:
-                    json_data = await request.json()
-                    key = key or json_data.get("key")
-                    value = value or json_data.get("val")
-                except Exception as e:
-                    return json_error_response(400, f"Invalid JSON body: {str(e)}")
-
-        if not key or not value:
-            return json_error_response(400, "Key and value parameters are required (use query params or JSON body)")
+            return json_error_response(400, "Key and value parameters are required in JSON body")
 
         # Decode URL-encoded parameters
         key = unquote(key)
@@ -322,19 +313,20 @@ async def put_handler(request: Request) -> Response:
 
 
 async def delete_handler(request: Request) -> Response:
-    """Handle DELETE requests."""
+    """Handle DELETE requests - JSON body required."""
     try:
-        # Get key from query parameters or JSON body
-        key = request.query.get("key")
-        if not key and request.content_type == "application/json":
-            try:
-                json_data = await request.json()
-                key = json_data.get("key")
-            except Exception as e:
-                return json_error_response(400, f"Invalid JSON body: {str(e)}")
+        # Only accept JSON body format
+        if request.content_type != "application/json":
+            return json_error_response(400, "Content-Type must be application/json")
+
+        try:
+            json_data = await request.json()
+            key = json_data.get("key")
+        except Exception as e:
+            return json_error_response(400, f"Invalid JSON body: {str(e)}")
 
         if not key:
-            return json_error_response(400, "Key parameter is required (use query params or JSON body)")
+            return json_error_response(400, "Key parameter is required in JSON body")
 
         # Decode URL-encoded key
         key = unquote(key)

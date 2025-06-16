@@ -1,3 +1,7 @@
+// KV-Raft: Finite State Machine for key-value store operations
+// Inspired by: https://github.com/aemirbosnak/distributed-key-value-store
+
+
 package fsm
 
 import (

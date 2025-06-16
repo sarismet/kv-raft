@@ -1,3 +1,7 @@
+// KV-Raft: HTTP handlers for distributed key-value operations
+// Inspired by: https://github.com/aemirbosnak/distributed-key-value-store
+
+
 package main
 
 import (
@@ -59,21 +63,19 @@ func writeJSONError(w http.ResponseWriter, statusCode int, message string) {
 func (s *Server) PutHandler(w http.ResponseWriter, r *http.Request) {
 	var req PutRequest
 
-	// Try to parse JSON body first, fallback to form data
-	if r.Header.Get("Content-Type") == "application/json" {
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeJSONError(w, http.StatusBadRequest, "Invalid JSON format")
-			return
-		}
-	} else {
-		// Fallback to form data for backward compatibility
-		r.ParseForm()
-		req.Key = r.Form.Get("key")
-		req.Value = r.Form.Get("val")
+	// Only accept JSON body format
+	if r.Header.Get("Content-Type") != "application/json" {
+		writeJSONError(w, http.StatusBadRequest, "Content-Type must be application/json")
+		return
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "Invalid JSON format")
+		return
 	}
 
 	if req.Key == "" || req.Value == "" {
-		writeJSONError(w, http.StatusBadRequest, "Key and value are required")
+		writeJSONError(w, http.StatusBadRequest, "Key and value are required in JSON body")
 		return
 	}
 
@@ -188,23 +190,19 @@ func (s *Server) GetHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) DeleteHandler(w http.ResponseWriter, r *http.Request) {
 	var req DeleteRequest
 
-	// Try to parse JSON body first, fallback to form/query data
-	if r.Header.Get("Content-Type") == "application/json" {
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeJSONError(w, http.StatusBadRequest, "Invalid JSON format")
-			return
-		}
-	} else {
-		// Fallback to query parameter or form data
-		req.Key = r.URL.Query().Get("key")
-		if req.Key == "" {
-			r.ParseForm()
-			req.Key = r.Form.Get("key")
-		}
+	// Only accept JSON body format
+	if r.Header.Get("Content-Type") != "application/json" {
+		writeJSONError(w, http.StatusBadRequest, "Content-Type must be application/json")
+		return
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "Invalid JSON format")
+		return
 	}
 
 	if req.Key == "" {
-		writeJSONError(w, http.StatusBadRequest, "Key parameter is required")
+		writeJSONError(w, http.StatusBadRequest, "Key parameter is required in JSON body")
 		return
 	}
 
