@@ -1,0 +1,110 @@
+version: "3.8"
+
+networks:
+  kv-raft-network:
+    driver: bridge
+
+services:
+  shard1:
+    build:
+      context: ./shard
+    container_name: shard1
+    networks:
+      - kv-raft-network
+    command: ./shard-server --shard_id=1 --node_id=1 --port=8011 --raft_addr=shard1:18011
+    ports:
+      - "8011:8011"
+      - "18011:18011"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8011/config"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  shard2:
+    build:
+      context: ./shard
+    container_name: shard2
+    networks:
+      - kv-raft-network
+    command: ./shard-server --shard_id=2 --node_id=2 --port=8021 --raft_addr=shard2:18021
+    ports:
+      - "8021:8021"
+      - "18021:18021"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8021/config"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  shard3:
+    build:
+      context: ./shard
+    container_name: shard3
+    networks:
+      - kv-raft-network
+    command: ./shard-server --shard_id=3 --node_id=3 --port=8031 --raft_addr=shard3:18031
+    ports:
+      - "8031:8031"
+      - "18031:18031"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8031/config"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  # Cluster initialization service
+  cluster-init:
+    build:
+      context: ./cluster
+    container_name: cluster-init
+    networks:
+      - kv-raft-network
+    depends_on:
+      shard1:
+        condition: service_healthy
+      shard2:
+        condition: service_healthy
+      shard3:
+        condition: service_healthy
+    restart: "no"
+
+
+  router:
+    build:
+      context: ./router
+    container_name: router
+    networks:
+      - kv-raft-network
+    depends_on:
+      cluster-init:
+        condition: service_completed_successfully
+    environment:
+      - PORT=3000
+      - SHARD_PORTS=8011,8021,8031
+    command: python router.py --port 3000 --shard-ports shard1:8011,shard2:8021,shard3:8031 --log-level INFO
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s 
+
+  # Test runner service - runs tests every 30 seconds
+  test-runner:
+    build:
+      context: ./test
+    container_name: test-runner
+    networks:
+      - kv-raft-network
+    depends_on:
+      router:
+        condition: service_healthy
+    environment:
+      - TEST_INTERVAL=30
+    restart: unless-stopped 
